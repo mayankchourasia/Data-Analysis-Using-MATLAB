@@ -1,0 +1,340 @@
+classdef PatientsDisplay < matlab.apps.AppBase
+
+    % Properties that correspond to app components
+    properties (Access = public)
+        UIFigure                  matlab.ui.Figure
+        TabGroup                  matlab.ui.container.TabGroup
+        Tab1                      matlab.ui.container.Tab
+        UIAxes                    matlab.ui.control.UIAxes
+        Label                     matlab.ui.control.Label
+        Panel                     matlab.ui.container.Panel
+        BloodPressureSwitchLabel  matlab.ui.control.Label
+        BloodPressureSwitch       matlab.ui.control.Switch
+        Panel2                    matlab.ui.container.Panel
+        FemaleCheckBox            matlab.ui.control.CheckBox
+        MaleCheckBox              matlab.ui.control.CheckBox
+        ButtonGroup               matlab.ui.container.ButtonGroup
+        ScatterButton             matlab.ui.control.RadioButton
+        HistogramButton           matlab.ui.control.RadioButton
+        BinWidthSliderLabel       matlab.ui.control.Label
+        BinWidthSlider            matlab.ui.control.Slider
+        Tab2                      matlab.ui.container.Tab
+        UITable                   matlab.ui.control.Table
+        Tab                       matlab.ui.container.Tab
+    end
+
+    % The app displays the data by using the scatter plot and histogram.
+    % It makes use of tabs to separate the ploting options output from the table display of the data.
+    % There are several graphical elements used such as checkboxes, slider, switch and radiobutton group.
+    % The data used in the app is shiped with the product.
+    
+    properties (Access = private)
+        % Declare properties of the PatientsDisplay class.
+        Data
+        SelectedGenders
+        SelectedColors
+        BinWidth
+        Histogram = gobjects(0)
+    end
+    
+    methods (Access = private)
+        
+        function NBins = numhistbins(app,data)
+            % Utility function to compute the number of histogram bins
+            binwidth = app.BinWidth;
+            range2plot =  floor(min(data)):binwidth:ceil(max(data));
+            NBins = size(range2plot,2);
+        end
+
+        function annotateScatterPlot(app)
+            % Update X and Y Labels
+            app.UIAxes.XLabel.String = 'Weight';
+            app.UIAxes.YLabel.String = app.BloodPressureSwitch.Value;
+            % Turn on title
+            app.Label.Visible = 'on';
+            % Dont show the histogram slider
+            app.BinWidthSliderLabel.Visible = 'off';
+            app.BinWidthSlider.Visible = 'off';
+        end
+        
+        function annotateHistogram(app)
+            % Turn off title
+            app.Label.Visible = 'off';
+            
+            % Update X and Y Labels
+            app.UIAxes.XLabel.String = app.BloodPressureSwitch.Value;
+            app.UIAxes.YLabel.String = '# of Patients';
+            
+            % Show histogram slider
+            app.BinWidthSliderLabel.Visible = 'on';
+            app.BinWidthSlider.Visible = 'on';
+        end
+        
+        
+    end
+
+    methods (Access = private)
+
+        % Code that executes after component creation
+        function startupFcn(app)
+            % Load the data.
+            load patients.mat
+            
+            % Store the data in a table and display it in one of the App's tabs.
+            app.Data = table(LastName,Gender,Smoker,Age,Height,Weight,Diastolic,Systolic,Location);
+            app.UITable.Data = table2cell(app.Data);
+            app.BinWidth = app.BinWidthSlider.Value;
+            
+            % Update the axes with the corresponding data.
+            updateSelectedGenders(app)
+            refreshplot(app)
+        end
+
+        % Value changing function: BinWidthSlider
+        function SliderValueChanging(app, event)
+            % Update the histogram as the slider value for bindwidth changes.
+            app.BinWidth = event.Value;
+            for ii=1:length(app.Histogram)
+                app.Histogram(ii).NumBins = numhistbins(app,app.Histogram(ii).Data);
+            end
+        end
+
+        % Callback function: BinWidthSlider, BloodPressureSwitch, 
+        % ButtonGroup, UITable
+        function refreshplot(app, event)
+            Genders = app.SelectedGenders;
+            Colors = app.SelectedColors;
+            
+            % Start with a fresh plot
+            cla(app.UIAxes)
+            hold(app.UIAxes,'on')
+            app.Histogram = gobjects(0);
+            
+            % Select relevant segment of data
+            xdata = app.Data.Weight;
+            ydata = app.Data.(app.BloodPressureSwitch.Value);
+            
+            % Create either a scatter plot or histogram, based on selection
+            switch app.ButtonGroup.SelectedObject.Text
+            
+                case 'Scatter'
+                    % Build a scatter plot for each selected gender
+                    for ii = 1:length(Genders)
+                        selectedpatients = app.Data.Gender == Genders(ii);
+                        scatter(app.UIAxes,xdata(selectedpatients),ydata(selectedpatients),Colors{ii});
+                    end
+                    annotateScatterPlot(app)
+                    
+                case 'Histogram'
+                    % Build a histogram for each selected gender
+                    for ii = 1:length(Genders)
+                        selectedpatients = app.Data.Gender == Genders(ii);
+                        NBins = numhistbins(app,ydata(selectedpatients));
+                        h = histogram(app.UIAxes,ydata(selectedpatients),NBins,'BinLimits',[floor(min(ydata)) ceil(max(ydata))]);
+                        h.EdgeColor = Colors{ii};
+                        h.FaceColor = Colors{ii};
+                        app.Histogram = [app.Histogram h];
+                    end
+                    annotateHistogram(app)
+                
+            end            
+        end
+
+        % Value changed function: FemaleCheckBox, MaleCheckBox
+        function updateSelectedGenders(app, event)
+            % List which genders and colors to use
+            Genders = [];
+            Colors = [];
+            if app.MaleCheckBox.Value
+                Genders = "Male";
+                Colors = "blue";
+            end
+            if app.FemaleCheckBox.Value
+                Genders = [Genders "Female"];
+                Colors = [Colors "red"];
+            end
+            
+            if isempty(Genders)
+                % Disable the switches and buttons if they were on
+                app.BloodPressureSwitch.Enable = 'off';
+                app.ScatterButton.Enable = 'off';
+                app.HistogramButton.Enable = 'off';
+                app.BinWidthSliderLabel.Enable = 'off';
+                app.BinWidthSlider.Enable = 'off';
+            else
+                % Enable the switches and buttons if they were off
+                app.BloodPressureSwitch.Enable = 'on';
+                app.ScatterButton.Enable = 'on';
+                app.HistogramButton.Enable = 'on';
+                app.BinWidthSliderLabel.Enable = 'on';
+                app.BinWidthSlider.Enable = 'on';
+            end
+            app.SelectedGenders = Genders;
+            app.SelectedColors = Colors;
+            refreshplot(app)
+        end
+    end
+
+    % App initialization and construction
+    methods (Access = private)
+
+        % Create UIFigure and components
+        function createComponents(app)
+
+            % Create UIFigure
+            app.UIFigure = uifigure;
+            app.UIFigure.AutoResizeChildren = 'off';
+            app.UIFigure.Color = [0.9412 0.9412 0.9412];
+            app.UIFigure.Position = [100 100 741 405];
+            app.UIFigure.Name = 'Patients Display';
+            app.UIFigure.Resize = 'off';
+
+            % Create TabGroup
+            app.TabGroup = uitabgroup(app.UIFigure);
+            app.TabGroup.AutoResizeChildren = 'off';
+            app.TabGroup.Position = [11 7 721 389];
+
+            % Create Tab1
+            app.Tab1 = uitab(app.TabGroup);
+            app.Tab1.AutoResizeChildren = 'off';
+            app.Tab1.Title = 'Plot';
+            app.Tab1.BackgroundColor = [0.9412 0.9412 0.9412];
+
+            % Create UIAxes
+            app.UIAxes = uiaxes(app.Tab1);
+            xlabel(app.UIAxes, 'Weight')
+            ylabel(app.UIAxes, 'Diastolic')
+            app.UIAxes.PlotBoxAspectRatio = [1 0.671394799054374 0.671394799054374];
+            app.UIAxes.GridAlpha = 0.15;
+            app.UIAxes.MinorGridAlpha = 0.25;
+            app.UIAxes.Box = 'on';
+            app.UIAxes.Position = [215 11 471 327];
+
+            % Create Label
+            app.Label = uilabel(app.Tab1);
+            app.Label.HorizontalAlignment = 'center';
+            app.Label.VerticalAlignment = 'top';
+            app.Label.FontSize = 14;
+            app.Label.FontWeight = 'bold';
+            app.Label.Position = [390 340 123 18];
+            app.Label.Text = 'Data Visualization';
+
+            % Create Panel
+            app.Panel = uipanel(app.Tab1);
+            app.Panel.AutoResizeChildren = 'off';
+            app.Panel.Position = [17 11 167 347];
+
+            % Create BloodPressureSwitchLabel
+            app.BloodPressureSwitchLabel = uilabel(app.Panel);
+            app.BloodPressureSwitchLabel.HorizontalAlignment = 'center';
+            app.BloodPressureSwitchLabel.VerticalAlignment = 'top';
+            app.BloodPressureSwitchLabel.Position = [37 228 84 15];
+            app.BloodPressureSwitchLabel.Text = 'Blood Pressure';
+
+            % Create BloodPressureSwitch
+            app.BloodPressureSwitch = uiswitch(app.Panel, 'slider');
+            app.BloodPressureSwitch.Items = {'Systolic', 'Diastolic'};
+            app.BloodPressureSwitch.ValueChangedFcn = createCallbackFcn(app, @refreshplot, true);
+            app.BloodPressureSwitch.Position = [53 191 47.75 21];
+            app.BloodPressureSwitch.Value = 'Systolic';
+
+            % Create Panel2
+            app.Panel2 = uipanel(app.Panel);
+            app.Panel2.AutoResizeChildren = 'off';
+            app.Panel2.Title = 'Gender';
+            app.Panel2.Position = [8 258 149 82];
+
+            % Create FemaleCheckBox
+            app.FemaleCheckBox = uicheckbox(app.Panel2);
+            app.FemaleCheckBox.ValueChangedFcn = createCallbackFcn(app, @updateSelectedGenders, true);
+            app.FemaleCheckBox.Text = 'Female';
+            app.FemaleCheckBox.Position = [12 11 60 16];
+
+            % Create MaleCheckBox
+            app.MaleCheckBox = uicheckbox(app.Panel2);
+            app.MaleCheckBox.ValueChangedFcn = createCallbackFcn(app, @updateSelectedGenders, true);
+            app.MaleCheckBox.Text = 'Male';
+            app.MaleCheckBox.Position = [12 38 46 16];
+            app.MaleCheckBox.Value = true;
+
+            % Create ButtonGroup
+            app.ButtonGroup = uibuttongroup(app.Panel);
+            app.ButtonGroup.AutoResizeChildren = 'off';
+            app.ButtonGroup.SelectionChangedFcn = createCallbackFcn(app, @refreshplot, true);
+            app.ButtonGroup.Title = 'Plotting Options';
+            app.ButtonGroup.Position = [7 90 149 79];
+
+            % Create ScatterButton
+            app.ScatterButton = uiradiobutton(app.ButtonGroup);
+            app.ScatterButton.Text = 'Scatter';
+            app.ScatterButton.Position = [11 34 103 15];
+            app.ScatterButton.Value = true;
+
+            % Create HistogramButton
+            app.HistogramButton = uiradiobutton(app.ButtonGroup);
+            app.HistogramButton.Text = 'Histogram';
+            app.HistogramButton.Position = [11 12 103 15];
+
+            % Create BinWidthSliderLabel
+            app.BinWidthSliderLabel = uilabel(app.Tab1);
+            app.BinWidthSliderLabel.HorizontalAlignment = 'center';
+            app.BinWidthSliderLabel.VerticalAlignment = 'top';
+            app.BinWidthSliderLabel.Position = [54 82 76 15];
+            app.BinWidthSliderLabel.Text = 'Bin Width';
+
+            % Create BinWidthSlider
+            app.BinWidthSlider = uislider(app.Tab1);
+            app.BinWidthSlider.Limits = [1 11];
+            app.BinWidthSlider.MajorTicks = [1 2 3 4 5 6 7 8 9 10 11];
+            app.BinWidthSlider.ValueChangedFcn = createCallbackFcn(app, @refreshplot, true);
+            app.BinWidthSlider.ValueChangingFcn = createCallbackFcn(app, @SliderValueChanging, true);
+            app.BinWidthSlider.MinorTicks = [];
+            app.BinWidthSlider.Position = [31 65 135 3];
+            app.BinWidthSlider.Value = 5;
+
+            % Create Tab2
+            app.Tab2 = uitab(app.TabGroup);
+            app.Tab2.AutoResizeChildren = 'off';
+            app.Tab2.Title = 'Data';
+
+            % Create UITable
+            app.UITable = uitable(app.Tab2);
+            app.UITable.ColumnName = {'Last Name'; 'Gender'; 'Smoker'; 'Age'; 'Height'; 'Weight'; 'Diastolic'; 'Systolic'; 'Location'};
+            app.UITable.RowName = {};
+            app.UITable.RowStriping = 'off';
+            app.UITable.CellSelectionCallback = createCallbackFcn(app, @refreshplot, true);
+            app.UITable.Position = [11 8 701 350];
+
+            % Create Tab
+            app.Tab = uitab(app.TabGroup);
+            app.Tab.Title = 'Tab';
+        end
+    end
+
+    methods (Access = public)
+
+        % Construct app
+        function app = PatientsDisplay
+
+            % Create and configure components
+            createComponents(app)
+
+            % Register the app with App Designer
+            registerApp(app, app.UIFigure)
+
+            % Execute the startup function
+            runStartupFcn(app, @startupFcn)
+
+            if nargout == 0
+                clear app
+            end
+        end
+
+        % Code that executes before app deletion
+        function delete(app)
+
+            % Delete UIFigure when app is deleted
+            delete(app.UIFigure)
+        end
+    end
+end
