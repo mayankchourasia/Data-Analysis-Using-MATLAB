@@ -338,3 +338,4 @@ classdef PatientsDisplay < matlab.apps.AppBase
         end
     end
 end
+
